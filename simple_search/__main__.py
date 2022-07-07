@@ -88,22 +88,43 @@ def file_results(file_path: str, options: Options) -> str:
         yield f"{file_path}@{start} [{classname}]: {line}"
 
 
-def walk_directories(directories: typing.List[str], filepath_exclude: str) -> str:
-    excludes = [re.compile(exclude) for exclude in filepath_exclude.split(",")]
+def walk_directories(
+    directories: typing.List[str],
+    filepath_exclude: str,
+    filepath_only: str,
+) -> str:
+    excludes: typing.List[re.Pattern] = []
+    only: typing.List[re.Pattern] = []
+
+    if filepath_exclude:
+        excludes = [re.compile(exclude) for exclude in filepath_exclude.split(",")]
+
+    if filepath_only:
+        only = [re.compile(o) for o in filepath_only.split(",")]
 
     for directory in directories:
         for root, _, files in os.walk(directory):
             for f in files:
-                excluded: bool = False
+                skip: bool = False
+                skip_only: bool = False
+
+                if only:
+                    skip_only = True
+
                 if f.endswith(".py"):
                     filepath: str = os.path.join(root, f)
 
                     for exclude in excludes:
                         if exclude.search(filepath):
-                            excluded = True
+                            skip = True
                             break
 
-                    if excluded:
+                    for o in only:
+                        if o.search(filepath):
+                            skip_only = False
+                            break
+
+                    if skip or skip_only:
                         continue
 
                     yield filepath
@@ -114,13 +135,15 @@ def walk_directories(directories: typing.List[str], filepath_exclude: str) -> st
 @click.option("--includes", help="Words to include")
 @click.option("--max-distance", default=-1, help="Max distance between words")
 @click.option("--directories", default="", help="Directories to include in the search")
-@click.option("--filepath-exclude", default="", help="Filenames to excldue")
+@click.option("--filepath-exclude", default="", help="Filepaths to exclude")
+@click.option("--filepath-only", default="", help="Only search these filepaths")
 def main(
     source_file: str,
     includes: str,
     max_distance: int,
     directories: str,
     filepath_exclude: str,
+    filepath_only: str,
 ):
     mode: Mode = Mode.SOURCE_FILE
 
@@ -139,6 +162,7 @@ def main(
         source_files = walk_directories(
             directories,
             filepath_exclude,
+            filepath_only,
         )
     else:
         source_files = [source_file]
