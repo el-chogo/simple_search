@@ -1,4 +1,6 @@
 import dataclasses
+import enum
+import os
 import re
 import sys
 import typing
@@ -6,6 +8,10 @@ import typing
 import click
 import parso
 
+
+class Mode(enum.Enum):
+    SOURCE_FILE = 1
+    DIRECTORIES = 2
 
 @dataclasses.dataclass
 class Options:
@@ -66,26 +72,60 @@ def search(content: str, node, options: Options, classname: str = ""):
     return results
 
 
+def file_results(file_path: str, options: Options):
+    content: str
+
+    with open(file_path, "r") as f:
+        content = f.read()
+
+    tree = parso.parse(content)
+
+    results = search(content, tree, options)
+
+    for classname, line, start, _ in results:
+        yield f"{file_path}@{start} [{classname}]: {line}"
+
+
+def walk_directories(directories: typing.List[str]):
+    for directory in directories:
+        for root, _, files in os.walk(directory):
+            for f in files:
+                if f.endswith(".py"):
+                    yield os.path.join(root, f)
+
+
 @click.command()
 @click.option("--source-file", help="Source file to search")
 @click.option("--includes", help="Words to include")
 @click.option("--max-distance", default=-1, help="Max distance between words")
-def main(source_file: str, includes: typing.List[str], max_distance: int):
-    content: str
+@click.option("--directories", default=None, help="Directories to include in the search")
+def main(
+    source_file: str,
+    includes: typing.List[str],
+    max_distance: int,
+    directories: typing.List[str],
+):
+    mode: Mode = Mode.SOURCE_FILE
 
-    with open(source_file, "r") as f:
-        content = f.read()
-
-    tree = parso.parse(content)
     regexes = [re.compile(regex) for regex in includes.split(",")]
     options: Options = Options(
         includes=regexes, max_distance=max_distance
     )
 
-    results = search(content, tree, options)
+    if directories:
+        mode = mode.DIRECTORIES
 
-    for classname, line, start, _ in results:
-        print(f"{source_file}@{start} [{classname}]: {line}")
+    source_files: List[str]
+
+    if mode == mode.DIRECTORIES:
+        directories = directories.split(",")
+        source_files = walk_directories(directories)
+    else:
+        source_files = [source_file]
+
+    for source_file in source_files:
+        for result in file_results(source_file, options):
+            print(result)
 
 
 if __name__ == "__main__":
