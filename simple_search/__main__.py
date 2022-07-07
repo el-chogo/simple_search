@@ -13,10 +13,12 @@ class Mode(enum.Enum):
     SOURCE_FILE = 1
     DIRECTORIES = 2
 
+
 @dataclasses.dataclass
 class Options:
     includes: typing.List[str]
     max_distance: int
+
 
 def search(content: str, node, options: Options, classname: str = ""):
     results: typing.List[str] = []
@@ -72,7 +74,7 @@ def search(content: str, node, options: Options, classname: str = ""):
     return results
 
 
-def file_results(file_path: str, options: Options):
+def file_results(file_path: str, options: Options) -> str:
     content: str
 
     with open(file_path, "r") as f:
@@ -86,24 +88,39 @@ def file_results(file_path: str, options: Options):
         yield f"{file_path}@{start} [{classname}]: {line}"
 
 
-def walk_directories(directories: typing.List[str]):
+def walk_directories(directories: typing.List[str], filepath_exclude: str) -> str:
+    excludes = [re.compile(exclude) for exclude in filepath_exclude.split(",")]
+
     for directory in directories:
         for root, _, files in os.walk(directory):
             for f in files:
+                excluded: bool = False
                 if f.endswith(".py"):
-                    yield os.path.join(root, f)
+                    filepath: str = os.path.join(root, f)
+
+                    for exclude in excludes:
+                        if exclude.search(filepath):
+                            excluded = True
+                            break
+
+                    if excluded:
+                        continue
+
+                    yield filepath
 
 
 @click.command()
 @click.option("--source-file", help="Source file to search")
 @click.option("--includes", help="Words to include")
 @click.option("--max-distance", default=-1, help="Max distance between words")
-@click.option("--directories", default=None, help="Directories to include in the search")
+@click.option("--directories", default="", help="Directories to include in the search")
+@click.option("--filepath-exclude", default="", help="Filenames to excldue")
 def main(
     source_file: str,
-    includes: typing.List[str],
+    includes: str,
     max_distance: int,
-    directories: typing.List[str],
+    directories: str,
+    filepath_exclude: str,
 ):
     mode: Mode = Mode.SOURCE_FILE
 
@@ -119,7 +136,10 @@ def main(
 
     if mode == mode.DIRECTORIES:
         directories = directories.split(",")
-        source_files = walk_directories(directories)
+        source_files = walk_directories(
+            directories,
+            filepath_exclude,
+        )
     else:
         source_files = [source_file]
 
