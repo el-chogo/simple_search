@@ -1,4 +1,5 @@
 import dataclasses
+import re
 import sys
 import typing
 
@@ -53,7 +54,7 @@ def search(content: str, node, options: Options, classname: str = ""):
                     first_line = line
 
                 for needle in options.includes:
-                    if needle in needles and needle in line:
+                    if needle in needles and needle.search(line):
                         include_hits += 1
                         needles.remove(needle)
 
@@ -76,8 +77,9 @@ def main(source_file: str, includes: typing.List[str], max_distance: int):
         content = f.read()
 
     tree = parso.parse(content)
+    regexes = [re.compile(regex) for regex in includes.split(",")]
     options: Options = Options(
-        includes=includes.split(","), max_distance=max_distance
+        includes=regexes, max_distance=max_distance
     )
 
     results = search(content, tree, options)
